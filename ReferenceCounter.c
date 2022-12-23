@@ -11,7 +11,7 @@ void signal_end() {
     ended = 1;
 }
 
-void mark_stack(void) {
+static void mark_stack(void) {
     long stackTop = (long) NULL;
 
     stackPointer = &stackTop;
@@ -26,9 +26,8 @@ void updateStackPointer() {
     stack_mark();
 }
 
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
-void addPointerToList(void *ptr) {
+static void addPointerToList(void *ptr) {
     Pointer *newPointer = (Pointer *) malloc(sizeof(Pointer));
     newPointer->ptr = ptr;
     newPointer->refCount = 1;
@@ -61,7 +60,42 @@ void* allocate(size_t size) {
     return ptr;
 }
 
-void incrementFound(void* pointerToTest) {
+void *reallocate(void *ptr, size_t size) {
+    jmp_buf env;
+    memset(&env, 0, sizeof(jmp_buf));
+    setjmp(env);
+
+    updateStackPointer();
+
+    void *newPtr = realloc(ptr, size);
+
+    Pointer *current = head;
+    while (current != NULL) {
+        if (current->ptr == ptr) {
+            current->ptr = newPtr;
+            break;
+        }
+        current = current->next;
+    }
+
+    return newPtr;
+}
+
+void *continuousAllocate(size_t num, size_t size) {
+    jmp_buf env;
+    memset(&env, 0, sizeof(jmp_buf));
+    setjmp(env);
+
+    updateStackPointer();
+
+    void *ptr = calloc(num, size);
+
+    addPointerToList(ptr);
+
+    return ptr;
+}
+
+static void incrementFound(void* pointerToTest) {
     Pointer *currPointer = head;
     while (currPointer != NULL) {
         if ((size_t)currPointer->ptr == (size_t)pointerToTest) {
@@ -73,7 +107,7 @@ void incrementFound(void* pointerToTest) {
     }
 }
 
-void findPointers(void *stackStart) {
+static void findPointers(void *stackStart) {
     if (head == NULL) {
         return;
     }
@@ -96,12 +130,12 @@ void findPointers(void *stackStart) {
     }
 }
 
-void freePointers() {
+static void freePointers() {
     Pointer *currPointer = head;
     while (currPointer != NULL) {
         if (currPointer->refCount != currPointer->foundRefCount) {
             if (currPointer->foundRefCount == 0) {
-                fprintf(stderr,"Freeing %p\n", currPointer->ptr);
+                printf("Freeing %p\n", currPointer->ptr);
                 free(currPointer->ptr);
                 Pointer *nextPointer = currPointer->next;
                 Pointer *prevPointer = currPointer->prev;
@@ -132,7 +166,7 @@ void freePointers() {
     }
 }
 
-void freeRemaining() {
+static void freeRemaining() {
     Pointer *currPointer = head;
     while (currPointer != NULL) {
         printf("Freeing %p\n", currPointer->ptr);
@@ -166,8 +200,8 @@ void *garbageCollector(void* ptr) {
         freePointers();
     }
 
-
-    //freeRemaining(head, tail);
+    printf("Freeing remaining pointers\n");
+    freeRemaining();
 
 
     return NULL;

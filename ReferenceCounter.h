@@ -34,7 +34,6 @@ int rc_main(int argc, char** argv);
     pthread_t gcThread;         \
     pthread_create(&gcThread,NULL,garbageCollector,(void *)&stk);\
     int return_val = rc_main(argc, argv);                        \
-    sleep(0);\
     signal_end();              \
     pthread_join(gcThread,NULL);              \
     return return_val;\
@@ -43,10 +42,10 @@ int rc_main(int argc, char** argv);
 
 
 void *allocate(size_t size);
+void *reallocate(void *ptr, size_t size);
+void *continuousAllocate(size_t num, size_t size);
 void *garbageCollector(void *stackEnd);
-void mark_stack();
 void signal_end();
-void incrementFound(void* pointerToTest);
 void updateStackPointer();
 
 
