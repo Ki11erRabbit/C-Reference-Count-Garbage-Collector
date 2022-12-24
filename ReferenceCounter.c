@@ -116,13 +116,84 @@ void *continuousAllocate(size_t num, size_t size) {
     return ptr;
 }
 
+void *deallocate(void *ptr) {
+    //printf("Deallocating %p\n", ptr);
+    jmp_buf env;
+    memset(&env, 0, sizeof(jmp_buf));
+    setjmp(env);
+
+    updateStackPointer();
+
+    Pointer *current = head;
+    while (current != NULL) {
+        if (current->ptr == ptr) {
+            if (current->prev == NULL) {
+                head = current->next;
+            }
+            else {
+                current->prev->next = current->next;
+            }
+            if (current->next == NULL) {
+                tail = current->prev;
+            }
+            else {
+                current->next->prev = current->prev;
+            }
+            free(current);
+            break;
+        }
+        current = current->next;
+    }
+
+    free(ptr);
+    ptr = NULL;
+    return NULL;
+}
+
+void addReference(void *ptr) {
+    Pointer *current = head;
+    while (current != NULL) {
+        if (current->ptr == ptr) {
+            fprintf(stderr,"Already in list\n");
+            return;
+        }
+        current = current->next;
+    }
+    addPointerToList(ptr);
+}
+
+void removeReference(void *ptr) {
+    Pointer *current = head;
+    while (current != NULL) {
+        if (current->ptr == ptr) {
+            if (current->prev == NULL) {
+                head = current->next;
+            }
+            else {
+                current->prev->next = current->next;
+            }
+            if (current->next == NULL) {
+                tail = current->prev;
+            }
+            else {
+                current->next->prev = current->prev;
+            }
+            //printf("Pointer %p no longer gc\n", ptr);
+            free(current);
+            return;
+        }
+        current = current->next;
+    }
+    fprintf(stderr,"Pointer %p not in list\n", ptr);
+}
+
 static void incrementFound(void* pointerToTest) {
     Pointer *currPointer = head;
     while (currPointer != NULL) {
         if (currPointer->ptr == pointerToTest) {
             currPointer->foundRefCount++;
 
-            printf("Marking %p RefCount = %d\n", pointerToTest, currPointer->foundRefCount);
+            //printf("Marking %p RefCount = %d\n", pointerToTest, currPointer->foundRefCount);
             return;
         }
         currPointer = currPointer->next;
@@ -130,7 +201,7 @@ static void incrementFound(void* pointerToTest) {
 }
 
 static void findInHeap() {
-    printf("Finding in heap\n");
+    //printf("Finding in heap\n");
     long *currPtr = (long *) heapStart;
 
     while (currPtr < (long *) heapEnd) {
@@ -143,23 +214,46 @@ static void findInHeap() {
 }
 
 static void findInStack(void *stackStart) {
-    printf("Trying to find in stack\n");
-    long *stack = (long *) stackPointer;
-    long *stackEnd = (long *) stackStart;
+    //printf("Trying to find in stack\n");
 
-    while (stack < stackEnd) {
-        void *ptr = (void *) *stack;
-        if (ptr == NULL) {
+    if (stackPointer < stackStart) {//for when the heap grows downwards
+        long *stack = (long *) stackPointer;
+        long *stackEnd = (long *) stackStart;
+
+        while (stack < stackEnd) {
+            void *ptr = (void *) *stack;
+            if (ptr == NULL) {
+                stack++;
+                continue;
+            }
+            if (ptr >= heapStart && ptr <= heapEnd) {
+                //printf("checking %p\n", (void*)*stack);
+                incrementFound((void *) *stack);
+            }
+
             stack++;
-            continue;
         }
-        if (ptr >= heapStart && ptr <= heapEnd) {
-            //printf("checking %p\n", (void*)*stack);
-            incrementFound((void *) *stack);
-        }
-
-        stack++;
     }
+
+    if (stackPointer > stackStart) {//for when the heap grows upwards
+        long *stack = (long *) stackStart;
+        long *stackEnd = (long *) stackPointer;
+
+        while (stack < stackEnd) {
+            void *ptr = (void *) *stack;
+            if (ptr == NULL) {
+                stack++;
+                continue;
+            }
+            if (ptr >= heapStart && ptr <= heapEnd) {
+                //printf("checking %p\n", (void*)*stack);
+                incrementFound((void *) *stack);
+            }
+
+            stack++;
+        }
+    }
+
 }
 
 static void findPointers(void *stackStart) {

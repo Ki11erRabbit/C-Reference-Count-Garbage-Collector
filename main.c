@@ -53,6 +53,8 @@ int main() {
     printf("*b: %p\n", *b);
     printf("**b: %d\n", **b);
 
+    deallocate(b);
+
     //sleep(1);
     /*for (int i = 0; i < 5; i++) {
         doesSomething(i);
