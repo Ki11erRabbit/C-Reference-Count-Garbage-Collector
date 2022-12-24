@@ -46,6 +46,13 @@ int main() {
     int **b = getDoublePointer();
     *b = a;
 
+    *b = getIntPointer();
+    **b = 10;
+
+    printf("b: %p\n", b);
+    printf("*b: %p\n", *b);
+    printf("**b: %d\n", **b);
+
     //sleep(1);
     /*for (int i = 0; i < 5; i++) {
         doesSomething(i);
