@@ -5,18 +5,40 @@
 #include <unistd.h>
 #include "ReferenceCounter.h"
 
+/*
+ * A simple doubly linked list to store pointers and their reference counts and found reference counts.
+ * A found reference count is the number of times a pointer is found in the stack or heap.
+ * The reference count is the number of times a pointer appears in either the stack or the heap and if it reaches
+ * 0 the pointer is automatically freed.
+ *
+ * A map or a hash table might be a better data structure, but I wanted to keep it simple.
+ */
+struct Pointer {
+    void *ptr;
+    int refCount;
+    int foundRefCount;
+    struct Pointer *next;
+    struct Pointer *prev;
+};
 
 void signal_end() {
-    sleep(2);
+    //sleep(2);
     ended = 1;
 }
 
+/*
+ * This function is used to get the bottom of the stack.
+ */
 static void mark_stack(void) {
     long stackTop = (long) NULL;
 
     stackPointer = &stackTop;
 }
-
+/*
+ * updates the stack pointer.
+ * this function is borrowed from libcello.
+ * setting noinline as volatile and using a function pointer to call prevents the compiler from optimizing it out.
+ */
 void updateStackPointer() {
     volatile int noinline = 1;
     void (*stack_mark)(void) = noinline
@@ -26,6 +48,10 @@ void updateStackPointer() {
     stack_mark();
 }
 
+/*
+ * This function is used to set the start and end of the heap.
+ * It is called in main.
+ */
 void setHeapStart() {
     long* heapStartPtr = malloc(sizeof(long));
     long *heapEndPtr = malloc(sizeof(long));
@@ -35,7 +61,9 @@ void setHeapStart() {
     free(heapEndPtr);
 }
 
-
+/*
+ * This function is used to add a pointer to the end of the linked list.
+ */
 static void addPointerToList(void *ptr) {
     Pointer *newPointer = (Pointer *) malloc(sizeof(Pointer));
     newPointer->ptr = ptr;
@@ -55,6 +83,11 @@ static void addPointerToList(void *ptr) {
     }
 }
 
+/*
+ * This function is the same as malloc.
+ * The setting of the jmp_buf is borrowed from libcello.
+ * Setting the jump buffer should prevent any pointers from being left in registers.
+ */
 void* allocate(size_t size) {
     jmp_buf env;
     memset(&env, 0, sizeof(jmp_buf));
@@ -73,6 +106,12 @@ void* allocate(size_t size) {
     return ptr;
 }
 
+/*
+ * This function is the same as realloc.
+ * The setting of the jmp_buf is borrowed from libcello.
+ * Setting the jump buffer should prevent any pointers from being left in registers.
+ * If the pointer is changed then the old pointer is changed to the new pointer.
+ */
 void *reallocate(void *ptr, size_t size) {
     jmp_buf env;
     memset(&env, 0, sizeof(jmp_buf));
@@ -98,6 +137,11 @@ void *reallocate(void *ptr, size_t size) {
     return newPtr;
 }
 
+/*
+ * This function is the same as calloc.
+ * The setting of the jmp_buf is borrowed from libcello.
+ * Setting the jump buffer should prevent any pointers from being left in registers.
+ */
 void *continuousAllocate(size_t num, size_t size) {
     jmp_buf env;
     memset(&env, 0, sizeof(jmp_buf));
@@ -116,6 +160,11 @@ void *continuousAllocate(size_t num, size_t size) {
     return ptr;
 }
 
+/*
+ * This function is the same as free.
+ * The setting of the jmp_buf is borrowed from libcello.
+ * Setting the jump buffer should prevent any pointers from being left in registers.
+ */
 void *deallocate(void *ptr) {
     //printf("Deallocating %p\n", ptr);
     jmp_buf env;
@@ -150,6 +199,10 @@ void *deallocate(void *ptr) {
     return NULL;
 }
 
+/*
+ * This function adds a pointer to be monitored by the garbage collector.
+ * If the pointer is already in the list it is not added, otherwise it is added.
+ */
 void addReference(void *ptr) {
     Pointer *current = head;
     while (current != NULL) {
@@ -162,6 +215,11 @@ void addReference(void *ptr) {
     addPointerToList(ptr);
 }
 
+/*
+ * This function is used to remove a pointer from the list.
+ * It is used to remove pointers that are being monitored by the garbage collector.
+ * This has been added in case the gc is freeing a function earlier than expected.
+ */
 void removeReference(void *ptr) {
     Pointer *current = head;
     while (current != NULL) {
@@ -187,6 +245,9 @@ void removeReference(void *ptr) {
     fprintf(stderr,"Pointer %p not in list\n", ptr);
 }
 
+/*
+ * This function is used to mark the found reference count of the pointers if a given pointer is matched.
+ */
 static void incrementFound(void* pointerToTest) {
     Pointer *currPointer = head;
     while (currPointer != NULL) {
@@ -200,11 +261,14 @@ static void incrementFound(void* pointerToTest) {
     }
 }
 
+/*
+ * This function is used to see if a pointer is within the heap.
+ */
 static void findInHeap() {
     //printf("Finding in heap\n");
     long *currPtr = (long *) heapStart;
 
-    while (currPtr < (long *) heapEnd) {
+    while (currPtr <= (long *) heapEnd) {
         if (*currPtr > (long) heapStart && *currPtr < (long) heapEnd) {
             //printf("Checking %p\n", (void *) *currPtr);
             incrementFound((void *) *currPtr);
@@ -213,6 +277,10 @@ static void findInHeap() {
     }
 }
 
+/*
+ * This function is used to see if a pointer is within the stack.
+ * It should be able to find it whether the stack grows up or down.
+ */
 static void findInStack(void *stackStart) {
     //printf("Trying to find in stack\n");
 
@@ -220,7 +288,7 @@ static void findInStack(void *stackStart) {
         long *stack = (long *) stackPointer;
         long *stackEnd = (long *) stackStart;
 
-        while (stack < stackEnd) {
+        while (stack <= stackEnd) {
             void *ptr = (void *) *stack;
             if (ptr == NULL) {
                 stack++;
@@ -239,7 +307,7 @@ static void findInStack(void *stackStart) {
         long *stack = (long *) stackStart;
         long *stackEnd = (long *) stackPointer;
 
-        while (stack < stackEnd) {
+        while (stack <= stackEnd) {
             void *ptr = (void *) *stack;
             if (ptr == NULL) {
                 stack++;
@@ -256,6 +324,10 @@ static void findInStack(void *stackStart) {
 
 }
 
+/*
+ * This function is used find function pointers in the stack and the heap.
+ * It returns early if the linked list is empty.
+ */
 static void findPointers(void *stackStart) {
     if (head == NULL) {
         return;
@@ -294,6 +366,11 @@ static void findPointers(void *stackStart) {
     }*/
 }
 
+/*
+ * This function is used to free pointers that have a found reference count of 0.
+ * It also updates the reference count to match the found reference count.
+ * It also resets the found reference count to 0.
+ */
 static void freePointers() {
     Pointer *currPointer = head;
     while (currPointer != NULL) {
@@ -330,6 +407,10 @@ static void freePointers() {
     }
 }
 
+/*
+ * This function is used to free the pointers that didn't get freed during the loop.
+ * This ensures that no memory is leaked at the end of the program.
+ */
 static void freeRemaining() {
     Pointer *currPointer = head;
     while (currPointer != NULL) {
@@ -343,6 +424,13 @@ static void freeRemaining() {
     tail = NULL;
 }
 
+/*
+ * The main controlling loop of the garbage collector.
+ * It takes a pointer to the stack bottom (stackStart).
+ * It loops until set_ended is called by main.
+ * It calls findPointers and freePointers every loop.
+ * Once the loop exits, it frees the remaining pointers if there are any.
+ */
 void *garbageCollector(void* ptr) {
     void *stackStart = NULL;
     stackStart = ptr;
