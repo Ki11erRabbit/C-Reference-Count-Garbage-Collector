@@ -169,8 +169,8 @@ static void findPointers(void *stackStart) {
     Pointer *currPointer = head;
 
 
-    findInStack(stackStart);
-    //findInHeap();
+    //findInStack(stackStart);
+    findInHeap();
     /*if (stackPointer < stackStart) {
         for (void *p = stackStart; p >= stackPointer; p = ((char*)p) - sizeof(size_t)) {
             //printf("%p\n", (size_t*)p);
