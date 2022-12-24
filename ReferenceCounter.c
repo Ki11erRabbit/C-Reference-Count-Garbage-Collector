@@ -2,7 +2,6 @@
 // Created by ki11errabbit on 12/22/22.
 //
 
-#include <unistd.h>
 #include "ReferenceCounter.h"
 
 /*
@@ -22,7 +21,6 @@ struct Pointer {
 };
 
 void signal_end() {
-    //sleep(2);
     ended = 1;
 }
 
@@ -166,7 +164,9 @@ void *continuousAllocate(size_t num, size_t size) {
  * Setting the jump buffer should prevent any pointers from being left in registers.
  */
 void *deallocate(void *ptr) {
-    //printf("Deallocating %p\n", ptr);
+#ifdef DEBUG
+    printf("Deallocating %p\n", ptr);
+#endif
     jmp_buf env;
     memset(&env, 0, sizeof(jmp_buf));
     setjmp(env);
@@ -253,8 +253,9 @@ static void incrementFound(void* pointerToTest) {
     while (currPointer != NULL) {
         if (currPointer->ptr == pointerToTest) {
             currPointer->foundRefCount++;
-
-            //printf("Marking %p RefCount = %d\n", pointerToTest, currPointer->foundRefCount);
+#ifdef DEBUG
+            printf("Marking %p RefCount = %d\n", pointerToTest, currPointer->foundRefCount);
+#endif
             return;
         }
         currPointer = currPointer->next;
@@ -265,12 +266,16 @@ static void incrementFound(void* pointerToTest) {
  * This function is used to see if a pointer is within the heap.
  */
 static void findInHeap() {
-    //printf("Finding in heap\n");
+#ifdef DEBUG
+    printf("Finding in heap\n");
+#endif
     long *currPtr = (long *) heapStart;
 
     while (currPtr <= (long *) heapEnd) {
         if (*currPtr > (long) heapStart && *currPtr < (long) heapEnd) {
-            //printf("Checking %p\n", (void *) *currPtr);
+#ifdef DEBUG
+            printf("Checking %p\n", (void *) *currPtr);
+#endif
             incrementFound((void *) *currPtr);
         }
         currPtr++;
@@ -282,7 +287,9 @@ static void findInHeap() {
  * It should be able to find it whether the stack grows up or down.
  */
 static void findInStack(void *stackStart) {
-    //printf("Trying to find in stack\n");
+#ifdef DEBUG
+    printf("Trying to find in stack\n");
+#endif
 
     if (stackPointer < stackStart) {//for when the heap grows downwards
         long *stack = (long *) stackPointer;
@@ -295,7 +302,9 @@ static void findInStack(void *stackStart) {
                 continue;
             }
             if (ptr >= heapStart && ptr <= heapEnd) {
-                //printf("checking %p\n", (void*)*stack);
+#ifdef DEBUG
+                printf("checking %p\n", (void*)*stack);
+#endif
                 incrementFound((void *) *stack);
             }
 
@@ -314,7 +323,9 @@ static void findInStack(void *stackStart) {
                 continue;
             }
             if (ptr >= heapStart && ptr <= heapEnd) {
-                //printf("checking %p\n", (void*)*stack);
+#ifdef DEBUG
+                printf("checking %p\n", (void*)*stack);
+#endif
                 incrementFound((void *) *stack);
             }
 
@@ -332,38 +343,9 @@ static void findPointers(void *stackStart) {
     if (head == NULL) {
         return;
     }
-    Pointer *currPointer = head;
-
-
     findInStack(stackStart);
     findInHeap();
-    /*if (stackPointer < stackStart) {
-        for (void *p = stackStart; p >= stackPointer; p = ((char*)p) - sizeof(size_t)) {
-            //printf("%p\n", (size_t*)p);
-            void *ptr = (void *)*(size_t *) p;
-            if (ptr == NULL || ptr < heapStart || ptr > heapEnd) {
-                continue;
-            }
-            if (ptr > stackStart || ptr < stackPointer) {
-                continue;
-            }
-            printf("Checking 0x%zx\n", *(size_t*)p);
-            incrementFound((void*)*(size_t*)p);
-        }
-    }
-    if (stackPointer > stackStart) {
-        for (void *p = stackStart; p <= stackPointer; p = ((char*)p) +  sizeof(size_t)) {
 
-            if ((void*)*(size_t*)p == NULL) {
-                continue;
-            }
-            if ((void*)*(size_t*)p < stackStart || (void*)*(size_t*)p > stackPointer) {
-                continue;
-            }
-            printf("Checking 0x%zx\n", *(size_t*)p);
-            incrementFound((void*)*(size_t*)p);
-        }
-    }*/
 }
 
 /*
@@ -376,7 +358,9 @@ static void freePointers() {
     while (currPointer != NULL) {
         if (currPointer->refCount != currPointer->foundRefCount) {
             if (currPointer->foundRefCount == 0) {
+#ifdef DEBUG
                 printf("Freeing %p\n", currPointer->ptr);
+#endif
                 free(currPointer->ptr);
                 Pointer *nextPointer = currPointer->next;
                 Pointer *prevPointer = currPointer->prev;
@@ -414,7 +398,9 @@ static void freePointers() {
 static void freeRemaining() {
     Pointer *currPointer = head;
     while (currPointer != NULL) {
+#ifdef DEBUG
         printf("Freeing %p\n", currPointer->ptr);
+#endif
         free(currPointer->ptr);
         Pointer *nextPointer = currPointer->next;
         free(currPointer);
@@ -435,13 +421,16 @@ void *garbageCollector(void* ptr) {
     void *stackStart = NULL;
     stackStart = ptr;
 
+#ifdef DEBUG
     printf("Heap start:    %p\n", heapStart);
     printf("Heap end:      %p\n", heapEnd);
     printf("Stack start:   %p\n", stackStart);
+    printf("Stack pointer: %p\n", stackPointer);
+#endif
     void *tempPointer = stackPointer;
     void *tempHeapEnd = heapEnd;
-    printf("Stack pointer: %p\n", stackPointer);
     while (!ended) {
+#ifdef DEBUG
         if (stackPointer != tempPointer) {
             printf("Stack pointer: %p\n", stackPointer);
             tempPointer = stackPointer;
@@ -450,15 +439,14 @@ void *garbageCollector(void* ptr) {
             printf("Heap end:      %p\n", heapEnd);
             tempHeapEnd = heapEnd;
         }
-        //printf("Stack pointer:   %p\n", stackPointer);
-        //addPointers(head, tail);
-
+#endif
         findPointers(stackStart);
 
         freePointers();
     }
-
+#ifdef DEBUG
     printf("Freeing remaining pointers\n");
+#endif
     freeRemaining();
 
 
