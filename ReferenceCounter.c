@@ -28,8 +28,11 @@ void updateStackPointer() {
 
 void setHeapStart() {
     long* heapStartPtr = malloc(sizeof(long));
+    long *heapEndPtr = malloc(sizeof(long));
     heapStart = heapStartPtr;
+    heapEndPtr = heapEndPtr;
     free(heapStartPtr);
+    free(heapEndPtr);
 }
 
 
@@ -117,21 +120,44 @@ static void incrementFound(void* pointerToTest) {
     Pointer *currPointer = head;
     while (currPointer != NULL) {
         if (currPointer->ptr == pointerToTest) {
-            printf("Marking %p\n", pointerToTest);
             currPointer->foundRefCount++;
+
+            printf("Marking %p RefCount = %d\n", pointerToTest, currPointer->foundRefCount);
             return;
         }
         currPointer = currPointer->next;
     }
 }
 
+static void findInHeap() {
+    printf("Finding in heap\n");
+    long *currPtr = (long *) heapStart;
+
+    while (currPtr < (long *) heapEnd) {
+        if (*currPtr > (long) heapStart && *currPtr < (long) heapEnd) {
+            //printf("Checking %p\n", (void *) *currPtr);
+            incrementFound((void *) *currPtr);
+        }
+        currPtr++;
+    }
+}
+
 static void findInStack(void *stackStart) {
-    long *stack = (long *) stackStart;
-    long *stackEnd = (long *) &stackPointer;
+    printf("Trying to find in stack\n");
+    long *stack = (long *) stackPointer;
+    long *stackEnd = (long *) stackStart;
 
     while (stack < stackEnd) {
-        printf("checking %p\n", (void*)*stack);
-        incrementFound((void *) *stack);
+        void *ptr = (void *) *stack;
+        if (ptr == NULL) {
+            stack++;
+            continue;
+        }
+        if (ptr >= heapStart && ptr <= heapEnd) {
+            //printf("checking %p\n", (void*)*stack);
+            incrementFound((void *) *stack);
+        }
+
         stack++;
     }
 }
@@ -144,6 +170,7 @@ static void findPointers(void *stackStart) {
 
 
     findInStack(stackStart);
+    //findInHeap();
     /*if (stackPointer < stackStart) {
         for (void *p = stackStart; p >= stackPointer; p = ((char*)p) - sizeof(size_t)) {
             //printf("%p\n", (size_t*)p);
