@@ -26,6 +26,12 @@ void updateStackPointer() {
     stack_mark();
 }
 
+void setHeapStart() {
+    long* heapStartPtr = malloc(sizeof(long));
+    heapStart = heapStartPtr;
+    free(heapStartPtr);
+}
+
 
 static void addPointerToList(void *ptr) {
     Pointer *newPointer = (Pointer *) malloc(sizeof(Pointer));
@@ -57,6 +63,10 @@ void* allocate(size_t size) {
 
     addPointerToList(ptr);
 
+    if (ptr > heapEnd) {
+        heapEnd = ptr;
+    }
+
     return ptr;
 }
 
@@ -78,6 +88,10 @@ void *reallocate(void *ptr, size_t size) {
         current = current->next;
     }
 
+    if (newPtr > heapEnd) {
+        heapEnd = newPtr;
+    }
+
     return newPtr;
 }
 
@@ -92,13 +106,17 @@ void *continuousAllocate(size_t num, size_t size) {
 
     addPointerToList(ptr);
 
+    if (ptr > heapEnd) {
+        heapEnd = ptr;
+    }
+
     return ptr;
 }
 
 static void incrementFound(void* pointerToTest) {
     Pointer *currPointer = head;
     while (currPointer != NULL) {
-        if ((size_t)currPointer->ptr == (size_t)pointerToTest) {
+        if (currPointer->ptr == pointerToTest) {
             printf("Marking %p\n", pointerToTest);
             currPointer->foundRefCount++;
             return;
@@ -107,27 +125,52 @@ static void incrementFound(void* pointerToTest) {
     }
 }
 
+static void findInStack(void *stackStart) {
+    long *stack = (long *) stackStart;
+    long *stackEnd = (long *) &stackPointer;
+
+    while (stack < stackEnd) {
+        printf("checking %p\n", (void*)*stack);
+        incrementFound((void *) *stack);
+        stack++;
+    }
+}
+
 static void findPointers(void *stackStart) {
     if (head == NULL) {
         return;
     }
     Pointer *currPointer = head;
-    if (stackPointer < stackStart) {
-        for (void *p = stackStart; (size_t)p >= (size_t)stackPointer; p = ((char*)p) - sizeof(size_t)) {
-            incrementFound(p);
-            if ((size_t)p == (size_t)stackPointer) {
-                break;
+
+
+    findInStack(stackStart);
+    /*if (stackPointer < stackStart) {
+        for (void *p = stackStart; p >= stackPointer; p = ((char*)p) - sizeof(size_t)) {
+            //printf("%p\n", (size_t*)p);
+            void *ptr = (void *)*(size_t *) p;
+            if (ptr == NULL || ptr < heapStart || ptr > heapEnd) {
+                continue;
             }
+            if (ptr > stackStart || ptr < stackPointer) {
+                continue;
+            }
+            printf("Checking 0x%zx\n", *(size_t*)p);
+            incrementFound((void*)*(size_t*)p);
         }
     }
     if (stackPointer > stackStart) {
-        for (void *p = stackStart; (size_t)p <= (size_t)stackPointer; p = ((char*)p) +  sizeof(size_t)) {
-            incrementFound(p);
-            if ((size_t)p == (size_t)stackPointer) {
-                break;
+        for (void *p = stackStart; p <= stackPointer; p = ((char*)p) +  sizeof(size_t)) {
+
+            if ((void*)*(size_t*)p == NULL) {
+                continue;
             }
+            if ((void*)*(size_t*)p < stackStart || (void*)*(size_t*)p > stackPointer) {
+                continue;
+            }
+            printf("Checking 0x%zx\n", *(size_t*)p);
+            incrementFound((void*)*(size_t*)p);
         }
-    }
+    }*/
 }
 
 static void freePointers() {
@@ -183,14 +226,20 @@ void *garbageCollector(void* ptr) {
     void *stackStart = NULL;
     stackStart = ptr;
 
-
+    printf("Heap start:    %p\n", heapStart);
+    printf("Heap end:      %p\n", heapEnd);
     printf("Stack start:   %p\n", stackStart);
     void *tempPointer = stackPointer;
+    void *tempHeapEnd = heapEnd;
     printf("Stack pointer: %p\n", stackPointer);
     while (!ended) {
         if (stackPointer != tempPointer) {
             printf("Stack pointer: %p\n", stackPointer);
             tempPointer = stackPointer;
+        }
+        if (heapEnd != tempHeapEnd) {
+            printf("Heap end:      %p\n", heapEnd);
+            tempHeapEnd = heapEnd;
         }
         //printf("Stack pointer:   %p\n", stackPointer);
         //addPointers(head, tail);

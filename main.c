@@ -40,6 +40,17 @@ int main() {
     *val = 5;
 
     printf("%ld\n", *val);
+
+    long *val2 = continuousAllocate(5, sizeof(long));
+
+    val2[0] = 1;
+
+    longLoop();
+
+    val2 = reallocate(val2, sizeof(long) * 10);
+
+    val2[5] = 5;
+
     //anotherLongLoop();
     return 0;
 }
