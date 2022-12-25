@@ -48,6 +48,7 @@ static void * heapStart = NULL;
  * the current heapEnd.
  */
 static void * heapEnd = NULL;
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  * This is the function that is run inside of main that gets defined by the user via the macro.

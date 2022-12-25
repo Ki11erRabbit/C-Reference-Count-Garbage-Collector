@@ -63,6 +63,7 @@ void setHeapStart() {
  * This function is used to add a pointer to the end of the linked list.
  */
 static void addPointerToList(void *ptr) {
+    pthread_mutex_lock(&lock);
     Pointer *newPointer = (Pointer *) malloc(sizeof(Pointer));
     newPointer->ptr = ptr;
     newPointer->refCount = 1;
@@ -79,6 +80,7 @@ static void addPointerToList(void *ptr) {
         tail->next = newPointer;
         tail = newPointer;
     }
+    pthread_mutex_unlock(&lock);
 }
 
 /*
@@ -440,9 +442,12 @@ void *garbageCollector(void* ptr) {
             tempHeapEnd = heapEnd;
         }
 #endif
+
+        pthread_mutex_lock(&lock);
         findPointers(stackStart);
 
         freePointers();
+        pthread_mutex_unlock(&lock);
     }
 #ifdef DEBUG
     printf("Freeing remaining pointers\n");
