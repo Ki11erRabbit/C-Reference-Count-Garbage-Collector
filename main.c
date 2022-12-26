@@ -11,7 +11,7 @@ void doesSomething(int time) {
 
 void longLoop() {
     doesSomething(1);
-    updateStackPointer();
+    //updateStackPointer();
     for (int i = 0; i < 100000; i++) {
         //sleep(1);
     }
@@ -42,7 +42,7 @@ int main() {
     printf("a: %p\n", a);
 
     printf("a: %d\n", *a);
-
+    updateStackPointer(stack);
     int **b = getDoublePointer();
     *b = a;
 

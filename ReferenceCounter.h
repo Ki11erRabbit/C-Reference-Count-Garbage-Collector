@@ -11,6 +11,17 @@
 #include <setjmp.h>
 #include <string.h>
 
+
+typedef struct Pointers {
+    void *top;
+    void *bottom;
+    struct Pointers *next;
+    struct Pointers *prev;
+} Pointers;
+
+static Pointers *stackHead = NULL;
+static Pointers *stackTail = NULL;
+
 /*
  * A simple doubly linked list to store pointers and their reference counts and found reference counts.
  * A found reference count is the number of times a pointer is found in the stack or heap.
@@ -53,7 +64,7 @@ static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 /*
  * This is the function that is run inside of main that gets defined by the user via the macro.
  */
-int rc_main(int argc, char** argv);
+int rc_main(int argc, char** argv, Pointers *stack);
 
 /*
  * This macro hides the fact that main is being redefined. The macro creates a main function that sets up the
@@ -69,13 +80,20 @@ int rc_main(int argc, char** argv);
     setHeapStart();              \
     long stk = (long)NULL;            \
     pthread_t gcThread;         \
-    pthread_create(&gcThread,NULL,garbageCollector,(void *)&stk);\
-    int return_val = rc_main(argc, argv);                        \
+    Pointers *stack = addThread();\
+    pthread_create(&gcThread,NULL,garbageCollector,NULL); \
+    int return_val = rc_main(argc, argv, stack);           \
+    removeThread(stack);              \
     signal_end();              \
     pthread_join(gcThread,NULL);              \
     return return_val;\
   }; \
-  int rc_main(int argc, char** argv)
+  int rc_main(int argc, char** argv, Pointers *stack)
+
+Pointers *addThread();
+
+void removeThread(Pointers *thread);
+
 
 /*
  * This function is the same as malloc.
@@ -110,7 +128,7 @@ void removeReference(void *ptr);
 /*
  * This is the function that controls the garbage collector loop.
  */
-void *garbageCollector(void *stackEnd);
+void *garbageCollector();
 /*
  * This function is used to signal the end to the garbage collector.
  * It changes a static variable that is used as the condition for the garbage collector loop.
@@ -121,7 +139,7 @@ void signal_end();
  * It is called before every allocation and deallocation.
  * It can be called manually if the user wants to update the stack pointer, which is highly recommended.
  */
-void updateStackPointer();
+void updateStackPointer(Pointers *stack);
 /*
  * This function is used to set the heap start and end.
  * It is called in main and should not be called manually.

@@ -24,26 +24,70 @@ void signal_end() {
     ended = 1;
 }
 
+Pointers *addThread() {
+    long top = 0;
+    long bottom = 0;
+    Pointers *new = malloc(sizeof(Pointers));
+    new->top = &top;
+    new->bottom = &bottom;
+    new->next = NULL;
+    new->prev = NULL;
+    pthread_mutex_lock(&lock);
+    if (stackHead == NULL) {
+        stackHead = new;
+        stackTail = new;
+    } else {
+        stackTail->next = new;
+        new->prev = stackTail;
+        stackTail = new;
+    }
+    pthread_mutex_unlock(&lock);
+    return new;
+}
+
+void removeThread(Pointers *thread) {
+    pthread_mutex_lock(&lock);
+    if (thread == stackHead) {
+        stackHead = thread->next;
+        if (stackHead != NULL) {
+            stackHead->prev = NULL;
+        }
+    } else if (thread == stackTail) {
+        stackTail = thread->prev;
+        if (stackTail != NULL) {
+            stackTail->next = NULL;
+        }
+    } else {
+        thread->prev->next = thread->next;
+        thread->next->prev = thread->prev;
+    }
+    free(thread);
+    pthread_mutex_unlock(&lock);
+}
+
+
 /*
  * This function is used to get the bottom of the stack.
  */
-static void mark_stack(void) {
+static void mark_stack(Pointers* stack) {
     long stackTop = (long) NULL;
 
-    stackPointer = &stackTop;
+    //stackPointer = &stackTop;
+    stack->top = &stackTop;
+
 }
 /*
  * updates the stack pointer.
  * this function is borrowed from libcello.
  * setting noinline as volatile and using a function pointer to call prevents the compiler from optimizing it out.
  */
-void updateStackPointer() {
+void updateStackPointer(Pointers *stack) {
     volatile int noinline = 1;
-    void (*stack_mark)(void) = noinline
+    void (*stack_mark)(Pointers*) = noinline
                                ? mark_stack
-                               : (void(*)(void))(NULL);
+                               : (void(*)(Pointers*))(NULL);
 
-    stack_mark();
+    stack_mark(stack);
 }
 
 /*
@@ -93,7 +137,7 @@ void* allocate(size_t size) {
     memset(&env, 0, sizeof(jmp_buf));
     setjmp(env);
 
-    updateStackPointer();
+    //updateStackPointer();
 
     void *ptr = malloc(size);
 
@@ -117,7 +161,7 @@ void *reallocate(void *ptr, size_t size) {
     memset(&env, 0, sizeof(jmp_buf));
     setjmp(env);
 
-    updateStackPointer();
+    //updateStackPointer();
 
     void *newPtr = realloc(ptr, size);
 
@@ -147,7 +191,7 @@ void *continuousAllocate(size_t num, size_t size) {
     memset(&env, 0, sizeof(jmp_buf));
     setjmp(env);
 
-    updateStackPointer();
+    //updateStackPointer();
 
     void *ptr = calloc(num, size);
 
@@ -173,7 +217,7 @@ void *deallocate(void *ptr) {
     memset(&env, 0, sizeof(jmp_buf));
     setjmp(env);
 
-    updateStackPointer();
+    //updateStackPointer();
 
     Pointer *current = head;
     while (current != NULL) {
@@ -288,12 +332,57 @@ static void findInHeap() {
  * This function is used to see if a pointer is within the stack.
  * It should be able to find it whether the stack grows up or down.
  */
-static void findInStack(void *stackStart) {
+static void findInStack() {
 #ifdef DEBUG
     printf("Trying to find in stack\n");
 #endif
+    Pointers *currPtr = stackHead;
+    while (currPtr != NULL) {
+        if (currPtr->bottom < currPtr->top) {//for when the heap grows downwards
+            long *stack = (long *) currPtr->bottom;
+            long *stackEnd = (long *) currPtr->top;
 
-    if (stackPointer < stackStart) {//for when the heap grows downwards
+            while (stack <= stackEnd) {
+                void *ptr = (void *) *stack;
+                if (ptr == NULL) {
+                    stack++;
+                    continue;
+                }
+                if (ptr >= heapStart && ptr <= heapEnd) {
+#ifdef DEBUG
+                    printf("checking %p\n", (void*)*stack);
+#endif
+                    incrementFound((void *) *stack);
+                }
+
+                stack++;
+            }
+        }
+
+        if (currPtr->bottom > currPtr->top) {//for when the heap grows upwards
+            long *stack = (long *) currPtr->top;
+            long *stackEnd = (long *) currPtr->bottom;
+
+            while (stack <= stackEnd) {
+                void *ptr = (void *) *stack;
+                if (ptr == NULL) {
+                    stack++;
+                    continue;
+                }
+                if (ptr >= heapStart && ptr <= heapEnd) {
+#ifdef DEBUG
+                    printf("checking %p\n", (void*)*stack);
+#endif
+                    incrementFound((void *) *stack);
+                }
+
+                stack++;
+            }
+        }
+        currPtr = currPtr->next;
+    }
+
+    /*if (stackPointer < stackStart) {//for when the heap grows downwards
         long *stack = (long *) stackPointer;
         long *stackEnd = (long *) stackStart;
 
@@ -333,7 +422,7 @@ static void findInStack(void *stackStart) {
 
             stack++;
         }
-    }
+    }*/
 
 }
 
@@ -341,11 +430,11 @@ static void findInStack(void *stackStart) {
  * This function is used find function pointers in the stack and the heap.
  * It returns early if the linked list is empty.
  */
-static void findPointers(void *stackStart) {
+static void findPointers() {
     if (head == NULL) {
         return;
     }
-    findInStack(stackStart);
+    findInStack();
     findInHeap();
 
 }
@@ -419,28 +508,28 @@ static void freeRemaining() {
  * It calls findPointers and freePointers every loop.
  * Once the loop exits, it frees the remaining pointers if there are any.
  */
-void *garbageCollector(void* ptr) {
+void *garbageCollector() {
     void *stackStart = NULL;
-    stackStart = ptr;
+    //stackStart = ptr;
 
 #ifdef DEBUG
     printf("Heap start:    %p\n", heapStart);
     printf("Heap end:      %p\n", heapEnd);
-    printf("Stack start:   %p\n", stackStart);
-    printf("Stack pointer: %p\n", stackPointer);
+    //printf("Stack start:   %p\n", stackStart);
+    //printf("Stack pointer: %p\n", stackPointer);
 #endif
-    void *tempPointer = stackPointer;
-    void *tempHeapEnd = heapEnd;
+    //void *tempPointer = stackPointer;
+    //void *tempHeapEnd = heapEnd;
     while (!ended) {
 #ifdef DEBUG
-        if (stackPointer != tempPointer) {
+        /*if (stackPointer != tempPointer) {
             printf("Stack pointer: %p\n", stackPointer);
             tempPointer = stackPointer;
         }
         if (heapEnd != tempHeapEnd) {
             printf("Heap end:      %p\n", heapEnd);
             tempHeapEnd = heapEnd;
-        }
+        }*/
 #endif
 
         pthread_mutex_lock(&lock);
